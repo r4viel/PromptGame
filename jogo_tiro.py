@@ -17,12 +17,8 @@ font_pequena = pygame.font.SysFont(None, 22)
 font_titulo = pygame.font.SysFont(None, 46)
 font_titulo_grande = pygame.font.SysFont(None, 70)
 
-TEMPO_BOSS_MS = 7 * 60 * 1000  # boss aparece no minuto 7
-
-
-# =========================================================
-# CLASSE BASE
-# =========================================================
+TEMPO_BOSS_MS = 7 * 60 * 1000    
+                                 
 class Entidade(pygame.sprite.Sprite):
     def __init__(self, x, y, velocidade, xp):
         super().__init__()
@@ -34,25 +30,17 @@ class Entidade(pygame.sprite.Sprite):
     def mover(self, dx, dy):
         self.rect.x += dx
         self.rect.y += dy
-
-
-# =========================================================
-# JOGADOR
-# =========================================================
+                             
 class Jogador(Entidade):
     def __init__(self, x, y):
         super().__init__(x, y, 5, 0)
-        self.image.fill((0, 255, 0))  # verde
+        self.image.fill((0, 255, 0))         
         self.vida = 5
-        self.ultima_direcao = pygame.Vector2(0, -1)  # direção padrão: pra cima
-        self.dano_cooldown = 0  # frames de invencibilidade após levar dano
-
-        # sistema de nível
+        self.ultima_direcao = pygame.Vector2(0, -1)                            
+        self.dano_cooldown = 0 
         self.nivel = 1
         self.xp_necessario = 100
-        self.level_ups_pendentes = 0
-
-        # armas do jogador: nome_da_classe -> instância da arma
+        self.level_ups_pendentes = 0                                     
         self.armas = {}
 
     def ganhar_xp(self, quantidade):
@@ -86,11 +74,7 @@ class Jogador(Entidade):
 
         if self.dano_cooldown > 0:
             self.dano_cooldown -= 1
-
-
-# =========================================================
-# TIRO (projétil genérico usado por todas as armas)
-# =========================================================
+                                
 class Tiro(Entidade):
     def __init__(self, x, y, direcao, dano=1, velocidade=10,
                  perfurante=False, persistente=False,
@@ -101,9 +85,9 @@ class Tiro(Entidade):
         self.rect = self.image.get_rect(center=(x, y))
         self.direcao = direcao
         self.dano = dano
-        self.perfurante = perfurante      # atravessa vários inimigos (uma vez cada)
-        self.persistente = persistente    # não some ao sair da tela / não é destruído ao acertar
-        self.atingidos = {}                # id(robo) -> cooldown restante
+        self.perfurante = perfurante                                                
+        self.persistente = persistente                                                           
+        self.atingidos = {}                                               
 
     def update(self):
         self.rect.x += self.direcao.x * self.velocidade
@@ -113,11 +97,7 @@ class Tiro(Entidade):
             if (self.rect.bottom < 0 or self.rect.top > ALTURA or
                     self.rect.right < 0 or self.rect.left > LARGURA):
                 self.kill()
-
-
-# =========================================================
-# ORBE (projétil especial que gira em torno do jogador)
-# =========================================================
+                                      
 class Orbe(pygame.sprite.Sprite):
     def __init__(self, jogador, angulo_offset, raio, dano):
         super().__init__()
@@ -140,11 +120,7 @@ class Orbe(pygame.sprite.Sprite):
         cx, cy = self.jogador.rect.center
         self.rect.centerx = cx + math.cos(ang) * self.raio
         self.rect.centery = cy + math.sin(ang) * self.raio
-
-
-# =========================================================
-# ARMAS (estilo Vampire Survivors: sobem de nível ao invés de trocar)
-# =========================================================
+                                       
 class Arma:
     nome_arma = "Arma"
     cooldown_base = 60
@@ -176,7 +152,6 @@ class Arma:
     def disparar(self, jogador, todos_sprites, tiros, inimigos):
         raise NotImplementedError
 
-
 class ArmaTiroReto(Arma):
     nome_arma = "Tiro Reto"
     cooldown_base = 45
@@ -200,7 +175,6 @@ class ArmaTiroReto(Arma):
             todos_sprites.add(t)
             tiros.add(t)
 
-
 class ArmaTripla(Arma):
     nome_arma = "Rajada Tripla"
     cooldown_base = 75
@@ -219,7 +193,6 @@ class ArmaTripla(Arma):
             todos_sprites.add(t)
             tiros.add(t)
 
-
 class ArmaLaser(Arma):
     nome_arma = "Laser Perfurante"
     cooldown_base = 95
@@ -233,10 +206,9 @@ class ArmaLaser(Arma):
         todos_sprites.add(t)
         tiros.add(t)
 
-
 class ArmaOrbital(Arma):
     nome_arma = "Orbe Girante"
-    cooldown_base = 999999  # sempre ativa, não usa disparo por cooldown
+    cooldown_base = 999999                                              
 
     def __init__(self):
         super().__init__()
@@ -261,15 +233,10 @@ class ArmaOrbital(Arma):
         self._recriar_orbes(jogador, todos_sprites, tiros)
 
     def update(self, jogador, todos_sprites, tiros, inimigos):
-        pass  # os orbes se auto-atualizam pelo grupo todos_sprites
-
+        pass                                                       
 
 TODAS_AS_ARMAS = [ArmaTiroReto, ArmaTripla, ArmaLaser, ArmaOrbital]
-
-
-# =========================================================
-# ROBOS (inimigos)
-# =========================================================
+                                               
 class Robo(Entidade):
     def __init__(self, x, y, velocidade, xp, vida=1, cor=(255, 0, 0),
                  tamanho=(40, 40), dano=1):
@@ -289,7 +256,6 @@ class Robo(Entidade):
         if self.rect.y > ALTURA + 60:
             self.kill()
 
-
 class RoboZigueZague(Robo):
     """Desce em zigue-zague, ricocheteando nas bordas laterais."""
     def __init__(self, x, y):
@@ -303,7 +269,6 @@ class RoboZigueZague(Robo):
         if self.rect.x <= 0 or self.rect.x >= LARGURA - 40:
             self.direcao *= -1
 
-
 class RoboReto(Robo):
     """Desce em linha reta, rápido, mas frágil."""
     def __init__(self, x, y):
@@ -312,7 +277,6 @@ class RoboReto(Robo):
 
     def atualizar_posicao(self):
         self.rect.y += self.velocidade
-
 
 class RoboPerseguidor(Robo):
     """Persegue a posição atual do jogador."""
@@ -330,7 +294,6 @@ class RoboPerseguidor(Robo):
         self.rect.x += diff.x * self.velocidade
         self.rect.y += diff.y * self.velocidade
 
-
 class RoboTanque(Robo):
     """Lento, muito resistente, dá bastante xp."""
     def __init__(self, x, y):
@@ -339,7 +302,6 @@ class RoboTanque(Robo):
 
     def atualizar_posicao(self):
         self.rect.y += self.velocidade
-
 
 class Boss(Robo):
     """Chefe final: desce até uma posição fixa e depois anda de um lado
@@ -363,7 +325,6 @@ class Boss(Robo):
             if self.rect.x <= 0 or self.rect.x >= LARGURA - self.rect.width:
                 self.direcao_x *= -1
 
-
 def criar_inimigo(pontos_atual, jogador):
     tipos = [RoboZigueZague, RoboReto]
     pesos = [3, 3]
@@ -381,7 +342,6 @@ def criar_inimigo(pontos_atual, jogador):
         return cls(x, y, jogador)
     return cls(x, y)
 
-
 def spawn_onda_especial(numero_onda, pontos_atual, jogador, todos_sprites, inimigos):
     """Cria uma rajada de inimigos de uma vez, ficando maior a cada onda."""
     quantidade = 5 + numero_onda * 2
@@ -390,11 +350,7 @@ def spawn_onda_especial(numero_onda, pontos_atual, jogador, todos_sprites, inimi
         robo.rect.y -= random.randint(0, 220)
         todos_sprites.add(robo)
         inimigos.add(robo)
-
-
-# =========================================================
-# SISTEMA DE ESCOLHA DE ARMA (estilo Vampire Survivors)
-# =========================================================
+                                                  
 def gerar_opcoes(jogador):
     candidatos = []
     for cls in TODAS_AS_ARMAS:
@@ -409,7 +365,6 @@ def gerar_opcoes(jogador):
     random.shuffle(candidatos)
     return candidatos[:3]
 
-
 def aplicar_escolha(opcao, jogador, todos_sprites, tiros):
     tipo, nome_cls = opcao
     cls = {c.__name__: c for c in TODAS_AS_ARMAS}[nome_cls]
@@ -422,7 +377,6 @@ def aplicar_escolha(opcao, jogador, todos_sprites, tiros):
         arma = jogador.armas[nome_cls]
         arma.upar()
         arma.ao_upar(jogador, todos_sprites, tiros)
-
 
 def desenhar_tela_escolha(opcoes, jogador):
     overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
@@ -472,14 +426,9 @@ def desenhar_tela_escolha(opcoes, jogador):
         TELA.blit(dica, (x + largura_caixa // 2 - dica.get_width() // 2, y + altura_caixa - 30))
 
     return caixas
-
-
-# =========================================================
-# MENU, PAUSA E CRÉDITOS
-# =========================================================
+                                              
 def rect_botao(y, largura=300, altura=70):
     return pygame.Rect(LARGURA // 2 - largura // 2, y, largura, altura)
-
 
 def rects_menu():
     return {
@@ -488,7 +437,6 @@ def rects_menu():
         "sair": rect_botao(430),
     }
 
-
 def rects_pausado():
     return {
         "continuar": rect_botao(230),
@@ -496,10 +444,8 @@ def rects_pausado():
         "sair": rect_botao(410),
     }
 
-
 def rects_creditos():
     return {"voltar": rect_botao(500)}
-
 
 def desenhar_botao(rect, texto):
     mouse_pos = pygame.mouse.get_pos()
@@ -509,7 +455,6 @@ def desenhar_botao(rect, texto):
     pygame.draw.rect(TELA, (255, 255, 255), rect, 2, border_radius=10)
     txt = font.render(texto, True, (255, 255, 255))
     TELA.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
-
 
 def desenhar_menu():
     TELA.fill((15, 15, 25))
@@ -525,7 +470,6 @@ def desenhar_menu():
     desenhar_botao(r["creditos"], "Créditos")
     desenhar_botao(r["sair"], "Sair")
     return r
-
 
 def desenhar_creditos(vitoria=False):
     TELA.fill((15, 15, 25))
@@ -564,7 +508,6 @@ def desenhar_creditos(vitoria=False):
     desenhar_botao(r["voltar"], "Voltar ao Menu")
     return r
 
-
 def desenhar_pausado():
     overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 180))
@@ -578,11 +521,7 @@ def desenhar_pausado():
     desenhar_botao(r["menu"], "Sair para o Menu")
     desenhar_botao(r["sair"], "Sair do Jogo")
     return r
-
-
-# =========================================================
-# ESTADO GLOBAL DA PARTIDA
-# =========================================================
+                      
 def nova_partida():
     global jogador, todos_sprites, inimigos, tiros
     global pontos, spawn_timer, tempo_inicio
@@ -623,8 +562,8 @@ SPAWN_INTERVALO_MIN = 12
 SPAWN_INTERVALO_INICIAL = 40
 
 nova_partida()
-estado = "menu"  # "menu" | "jogando" | "escolhendo" | "pausado" | "creditos"
-vitoria = False  # True quando o jogador derrota o chefe (mostrado na tela de créditos)
+estado = "menu"                                                              
+vitoria = False                                                                        
 
 rects_menu_atual = {}
 rects_pausado_atual = {}
@@ -637,8 +576,7 @@ while rodando:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             rodando = False
-
-        # ---------------- MENU ----------------
+                                                
         if estado == "menu" and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if rects_menu_atual.get("jogar") and rects_menu_atual["jogar"].collidepoint(event.pos):
                 nova_partida()
@@ -648,17 +586,14 @@ while rodando:
                 estado = "creditos"
             elif rects_menu_atual.get("sair") and rects_menu_atual["sair"].collidepoint(event.pos):
                 rodando = False
-
-        # ---------------- CRÉDITOS ----------------
+                                                    
         elif estado == "creditos" and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if rects_creditos_atual.get("voltar") and rects_creditos_atual["voltar"].collidepoint(event.pos):
                 estado = "menu"
-
-        # ---------------- JOGANDO ----------------
+                                                   
         elif estado == "jogando" and event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             estado = "pausado"
-
-        # ---------------- PAUSADO ----------------
+                                                   
         elif estado == "pausado":
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 estado = "jogando"
@@ -669,8 +604,7 @@ while rodando:
                     estado = "menu"
                 elif rects_pausado_atual.get("sair") and rects_pausado_atual["sair"].collidepoint(event.pos):
                     rodando = False
-
-        # ---------------- ESCOLHENDO ARMA ----------------
+                                                           
         elif estado == "escolhendo":
             escolhido = None
             if event.type == pygame.KEYDOWN:
@@ -698,16 +632,13 @@ while rodando:
                     caixas_opcoes = []
                 else:
                     estado = "jogando"
-
-    # =========================================================
-    # ATUALIZAÇÃO (só roda de verdade durante "jogando")
-    # =========================================================
+       
     if estado == "jogando":
         tempo_ms_atual = pygame.time.get_ticks() - tempo_inicio
         segundos_totais_atual = tempo_ms_atual // 1000
 
         if not boss_ativo:
-            # spawn normal: intervalo diminui aos poucos com o tempo
+                                                                    
             spawn_intervalo = max(SPAWN_INTERVALO_MIN,
                                    SPAWN_INTERVALO_INICIAL - segundos_totais_atual // 8)
             spawn_timer += 1
@@ -716,16 +647,14 @@ while rodando:
                 todos_sprites.add(robo)
                 inimigos.add(robo)
                 spawn_timer = 0
-
-            # onda especial
+                           
             if tempo_ms_atual >= (numero_onda + 1) * INTERVALO_ONDA_MS:
                 numero_onda += 1
                 banner_timer = DURACAO_BANNER
                 banner_texto = f"ONDA {numero_onda} CHEGANDO!"
                 banner_cor = (255, 60, 60)
                 spawn_onda_especial(numero_onda, pontos, jogador, todos_sprites, inimigos)
-
-        # chegada do chefe no minuto 7
+                                      
         if not boss_apareceu and tempo_ms_atual >= TEMPO_BOSS_MS:
             boss_apareceu = True
             boss_ativo = True
@@ -738,12 +667,10 @@ while rodando:
 
         if banner_timer > 0:
             banner_timer -= 1
-
-        # armas disparando automaticamente
+                                          
         for arma in jogador.armas.values():
             arma.update(jogador, todos_sprites, tiros, inimigos)
-
-        # colisão tiro x robô (com vida / perfuração)
+                                                     
         for tiro in list(tiros):
             atingidos = pygame.sprite.spritecollide(tiro, inimigos, False)
             for robo in atingidos:
@@ -775,8 +702,7 @@ while rodando:
                     tiro.atingidos[rid] -= 1
                     if tiro.atingidos[rid] <= 0:
                         del tiro.atingidos[rid]
-
-        # colisão robô x jogador (com pequena invencibilidade após tomar dano)
+                                                                              
         colididos = pygame.sprite.spritecollide(jogador, inimigos, False)
         if colididos:
             if jogador.dano_cooldown <= 0:
@@ -791,7 +717,7 @@ while rodando:
             vitoria = False
             estado = "menu"
 
-        # só atualiza o jogo se ele ainda não terminou nesta mesma iteração
+                                                                           
         if estado == "jogando":
             todos_sprites.update()
 
@@ -802,10 +728,7 @@ while rodando:
                     jogador.level_ups_pendentes -= 1
                 else:
                     jogador.level_ups_pendentes = 0
-
-    # =========================================================
-    # DESENHAR
-    # =========================================================
+                                          
     if estado == "menu":
         rects_menu_atual = desenhar_menu()
 
@@ -813,7 +736,7 @@ while rodando:
         rects_creditos_atual = desenhar_creditos(vitoria)
 
     else:
-        # "jogando", "escolhendo" e "pausado" compartilham a mesma cena de fundo
+                                                                                
         TELA.fill((20, 20, 20))
         todos_sprites.draw(TELA)
 
