@@ -33,6 +33,8 @@ Não é preciso apertar nada para atirar — todas as armas disparam automaticam
 
 - **XP e Nível**: destruir robôs concede experiência. Ao encher a barra de XP, o jogador sobe de nível e o jogo pausa para você escolher uma nova arma ou um upgrade de uma arma que já possui (até 8 níveis por arma).
 - **Vida**: o jogador começa com 5 pontos de vida e perde 1 a cada colisão com um inimigo. Ao chegar a 0, é game over.
+- **Dificuldade progressiva**: o intervalo entre spawns normais diminui aos poucos com o tempo de jogo (os robôs vão aparecendo cada vez mais rápido).
+- **Ondas especiais**: a cada 30 segundos chega uma rajada grande de inimigos de uma vez, com um aviso na tela ("ONDA X CHEGANDO!"). Cada onda traz mais inimigos que a anterior.
 
 ### Armas
 
