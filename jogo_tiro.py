@@ -36,6 +36,7 @@ class Jogador(Entidade):
         super().__init__(x, y, 5, 0)
         self.image.fill((0, 255, 0))         
         self.vida = 5
+        self.vida_maxima = 5
         self.ultima_direcao = pygame.Vector2(0, -1)                            
         self.dano_cooldown = 0 
         self.nivel = 1
@@ -121,6 +122,47 @@ class Orbe(pygame.sprite.Sprite):
         self.rect.centerx = cx + math.cos(ang) * self.raio
         self.rect.centery = cy + math.sin(ang) * self.raio
                                        
+class Espada(pygame.sprite.Sprite):
+    def __init__(self, jogador, dano, raio, duracao, angulo_arco, angulo_inicial):
+        super().__init__()
+        self.image_original = pygame.Surface((46, 20), pygame.SRCALPHA)
+        pygame.draw.polygon(self.image_original, (110, 80, 40), [(0, 7), (10, 7), (10, 13), (0, 13)])
+        pygame.draw.polygon(self.image_original, (225, 232, 240),
+                             [(9, 10), (40, 3), (46, 10), (40, 17)])
+        pygame.draw.polygon(self.image_original, (255, 255, 255),
+                             [(9, 10), (40, 3), (46, 10), (40, 17)], 2)
+
+        self.jogador = jogador
+        self.dano = dano
+        self.raio = raio
+        self.duracao = duracao
+        self.tempo = 0
+        self.angulo_arco = angulo_arco
+        self.angulo_inicial = angulo_inicial
+        self.perfurante = True
+        self.persistente = False
+        self.atingidos = {}
+
+        self.image = self.image_original
+        self.rect = self.image.get_rect()
+        self._posicionar(self.angulo_inicial)
+
+    def _posicionar(self, angulo):
+        cx, cy = self.jogador.rect.center
+        ang_rad = math.radians(angulo)
+        centro = (cx + math.cos(ang_rad) * self.raio, cy + math.sin(ang_rad) * self.raio)
+        self.image = pygame.transform.rotate(self.image_original, -angulo)
+        self.rect = self.image.get_rect(center=centro)
+
+    def update(self):
+        self.tempo += 1
+        progresso = min(1, self.tempo / self.duracao)
+        angulo_atual = self.angulo_inicial + self.angulo_arco * progresso
+        self._posicionar(angulo_atual)
+
+        if self.tempo >= self.duracao:
+            self.kill()
+
 class Arma:
     nome_arma = "Arma"
     cooldown_base = 60
@@ -152,28 +194,27 @@ class Arma:
     def disparar(self, jogador, todos_sprites, tiros, inimigos):
         raise NotImplementedError
 
-class ArmaTiroReto(Arma):
-    nome_arma = "Tiro Reto"
-    cooldown_base = 45
+class ArmaEspada(Arma):
+    nome_arma = "Espada"
+    cooldown_base = 60
+
+    def cooldown(self):
+        return max(10, self.cooldown_base - self.nivel * 6)
 
     def disparar(self, jogador, todos_sprites, tiros, inimigos):
-        dano = 1 + self.nivel // 2
-        extra = (self.nivel - 1) // 3
-        qtd = 1 + extra
-        base = jogador.ultima_direcao
+        dano = 2 + self.nivel
+        raio = 50 + self.nivel * 9      
+        duracao = 14
+        arco = 130 + self.nivel * 4
 
-        if qtd == 1:
-            direcoes = [base]
-        else:
-            angulo_total = 12 * (qtd - 1)
-            direcoes = [base.rotate(-angulo_total / 2 + i * (angulo_total / (qtd - 1)))
-                        for i in range(qtd)]
+        dir_v = jogador.ultima_direcao
+        angulo_base = math.degrees(math.atan2(dir_v.y, dir_v.x))
+        angulo_inicial = angulo_base - arco / 2
 
-        for d in direcoes:
-            t = Tiro(jogador.rect.centerx, jogador.rect.centery, d,
-                      dano=dano, velocidade=11, cor=(255, 255, 0), tamanho=(10, 10))
-            todos_sprites.add(t)
-            tiros.add(t)
+        espada = Espada(jogador, dano=dano, raio=raio, duracao=duracao,
+                          angulo_arco=arco, angulo_inicial=angulo_inicial)
+        todos_sprites.add(espada)
+        tiros.add(espada)
 
 class ArmaTripla(Arma):
     nome_arma = "Rajada Tripla"
@@ -235,7 +276,7 @@ class ArmaOrbital(Arma):
     def update(self, jogador, todos_sprites, tiros, inimigos):
         pass                                                       
 
-TODAS_AS_ARMAS = [ArmaTiroReto, ArmaTripla, ArmaLaser, ArmaOrbital]
+TODAS_AS_ARMAS = [ArmaEspada, ArmaTripla, ArmaLaser, ArmaOrbital]
                                                
 class Robo(Entidade):
     def __init__(self, x, y, velocidade, xp, vida=1, cor=(255, 0, 0),
@@ -270,7 +311,7 @@ class RoboZigueZague(Robo):
             self.direcao *= -1
 
 class RoboReto(Robo):
-    """Desce em linha reta, rápido, mas frágil."""
+  
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=5, xp=10, vida=1,
                           cor=(255, 140, 0), tamanho=(32, 32), dano=1)
@@ -303,9 +344,28 @@ class RoboTanque(Robo):
     def atualizar_posicao(self):
         self.rect.y += self.velocidade
 
+class RoboKamikaze(Robo):
+
+    def __init__(self, x, y, jogador):
+        super().__init__(x, y, velocidade=4.2, xp=20, vida=1,
+                          cor=(255, 90, 0), tamanho=(28, 28), dano=2)
+        self.jogador = jogador
+        self.pisca = 0
+
+    def atualizar_posicao(self):
+        alvo = pygame.Vector2(self.jogador.rect.center)
+        pos = pygame.Vector2(self.rect.center)
+        diff = alvo - pos
+        if diff.length() > 0:
+            diff = diff.normalize()
+        self.rect.x += diff.x * self.velocidade
+        self.rect.y += diff.y * self.velocidade
+
+        self.pisca = (self.pisca + 1) % 20
+        cor = (255, 255, 255) if self.pisca < 6 else (255, 90, 0)
+        self.image.fill(cor)
+
 class Boss(Robo):
-    """Chefe final: desce até uma posição fixa e depois anda de um lado
-    para o outro. Não morre ao encostar no jogador, só ao levar dano das armas."""
     def __init__(self, x, y, jogador):
         super().__init__(x, y, velocidade=2.2, xp=300, vida=70,
                           cor=(180, 0, 0), tamanho=(110, 110), dano=2)
@@ -325,11 +385,44 @@ class Boss(Robo):
             if self.rect.x <= 0 or self.rect.x >= LARGURA - self.rect.width:
                 self.direcao_x *= -1
 
+class Explosao(pygame.sprite.Sprite):
+    """Área de dano temporária deixada pela explosão do Robô Kamikaze.
+
+    Fica ativa por `duracao` quadros com um raio fixo (bem maior que o corpo
+    do kamikaze), pegando o jogador mesmo que ele não tenha encostado
+    diretamente no robô — por exemplo, se ele for destruído por uma arma
+    perto demais do jogador.
+    """
+    def __init__(self, x, y, raio=85, duracao=16):
+        super().__init__()
+        self.raio = raio
+        self.duracao = duracao
+        self.tempo = 0
+        self.image = pygame.Surface((raio * 2, raio * 2), pygame.SRCALPHA)
+        self.rect = self.image.get_rect(center=(x, y))
+        self._redesenhar()
+
+    def _redesenhar(self):
+        self.image.fill((0, 0, 0, 0))
+        progresso = self.tempo / self.duracao
+        alpha = max(0, 255 - int(progresso * 255))
+        pygame.draw.circle(self.image, (255, 140, 0, alpha), (self.raio, self.raio), self.raio)
+        pygame.draw.circle(self.image, (255, 235, 140, alpha), (self.raio, self.raio), int(self.raio * 0.55))
+
+    def update(self):
+        self.tempo += 1
+        self._redesenhar()
+        if self.tempo >= self.duracao:
+            self.kill()
+
 def criar_inimigo(pontos_atual, jogador):
     tipos = [RoboZigueZague, RoboReto]
     pesos = [3, 3]
     if pontos_atual >= 5:
         tipos.append(RoboPerseguidor)
+        pesos.append(2)
+    if pontos_atual >= 8:
+        tipos.append(RoboKamikaze)
         pesos.append(2)
     if pontos_atual >= 15:
         tipos.append(RoboTanque)
@@ -338,9 +431,15 @@ def criar_inimigo(pontos_atual, jogador):
     cls = random.choices(tipos, weights=pesos, k=1)[0]
     x = random.randint(40, LARGURA - 40)
     y = -40
-    if cls is RoboPerseguidor:
+    if cls is RoboPerseguidor or cls is RoboKamikaze:
         return cls(x, y, jogador)
     return cls(x, y)
+
+def explodir_kamikaze(robo, todos_sprites, explosoes):
+    """Cria a área de explosão na posição do kamikaze."""
+    explosao = Explosao(robo.rect.centerx, robo.rect.centery)
+    todos_sprites.add(explosao)
+    explosoes.add(explosao)
 
 def spawn_onda_especial(numero_onda, pontos_atual, jogador, todos_sprites, inimigos):
     """Cria uma rajada de inimigos de uma vez, ficando maior a cada onda."""
@@ -351,6 +450,8 @@ def spawn_onda_especial(numero_onda, pontos_atual, jogador, todos_sprites, inimi
         todos_sprites.add(robo)
         inimigos.add(robo)
                                                   
+VIDA_POR_UPGRADE = 2
+
 def gerar_opcoes(jogador):
     candidatos = []
     for cls in TODAS_AS_ARMAS:
@@ -362,11 +463,19 @@ def gerar_opcoes(jogador):
         else:
             candidatos.append(("nova", nome_cls))
 
+    candidatos.append(("vida", "VidaMaxima"))
+
     random.shuffle(candidatos)
     return candidatos[:3]
 
 def aplicar_escolha(opcao, jogador, todos_sprites, tiros):
     tipo, nome_cls = opcao
+
+    if tipo == "vida":
+        jogador.vida_maxima += VIDA_POR_UPGRADE
+        jogador.vida = min(jogador.vida_maxima, jogador.vida + VIDA_POR_UPGRADE)
+        return
+
     cls = {c.__name__: c for c in TODAS_AS_ARMAS}[nome_cls]
 
     if tipo == "nova":
@@ -383,7 +492,7 @@ def desenhar_tela_escolha(opcoes, jogador):
     overlay.fill((0, 0, 0, 180))
     TELA.blit(overlay, (0, 0))
 
-    titulo = font_titulo.render(f"Nível {jogador.nivel}! Escolha uma arma", True, (255, 255, 255))
+    titulo = font_titulo.render(f"Nível {jogador.nivel}! Escolha um upgrade", True, (255, 255, 255))
     TELA.blit(titulo, (LARGURA // 2 - titulo.get_width() // 2, 60))
 
     caixas = []
@@ -399,25 +508,35 @@ def desenhar_tela_escolha(opcoes, jogador):
         rect = pygame.Rect(x, y, largura_caixa, altura_caixa)
         caixas.append(rect)
 
-        cor_fundo = (40, 40, 60) if tipo == "nova" else (40, 60, 40)
+        if tipo == "vida":
+            cor_fundo = (60, 30, 30)
+        else:
+            cor_fundo = (40, 40, 60) if tipo == "nova" else (40, 60, 40)
         pygame.draw.rect(TELA, cor_fundo, rect, border_radius=12)
         pygame.draw.rect(TELA, (255, 255, 255), rect, 3, border_radius=12)
 
         numero = font_titulo.render(str(i + 1), True, (255, 255, 0))
         TELA.blit(numero, (x + largura_caixa // 2 - numero.get_width() // 2, y + 10))
 
-        classe = {c.__name__: c for c in TODAS_AS_ARMAS}[nome_cls]
-        nome_txt = font.render(classe.nome_arma, True, (255, 255, 255))
-        TELA.blit(nome_txt, (x + largura_caixa // 2 - nome_txt.get_width() // 2, y + 70))
-
-        if tipo == "nova":
-            tag = font_pequena.render("NOVA ARMA", True, (150, 200, 255))
-            nivel_txt = font_pequena.render("Nível 1", True, (200, 200, 200))
-        else:
-            arma_atual = jogador.armas[nome_cls]
-            tag = font_pequena.render("MELHORAR", True, (150, 255, 150))
+        if tipo == "vida":
+            nome_txt = font.render("Vitalidade", True, (255, 255, 255))
+            TELA.blit(nome_txt, (x + largura_caixa // 2 - nome_txt.get_width() // 2, y + 70))
+            tag = font_pequena.render("VIDA MÁXIMA", True, (255, 150, 150))
             nivel_txt = font_pequena.render(
-                f"Nível {arma_atual.nivel} -> {arma_atual.nivel + 1}", True, (200, 200, 200))
+                f"{jogador.vida_maxima} -> {jogador.vida_maxima + VIDA_POR_UPGRADE}", True, (200, 200, 200))
+        else:
+            classe = {c.__name__: c for c in TODAS_AS_ARMAS}[nome_cls]
+            nome_txt = font.render(classe.nome_arma, True, (255, 255, 255))
+            TELA.blit(nome_txt, (x + largura_caixa // 2 - nome_txt.get_width() // 2, y + 70))
+
+            if tipo == "nova":
+                tag = font_pequena.render("NOVA ARMA", True, (150, 200, 255))
+                nivel_txt = font_pequena.render("Nível 1", True, (200, 200, 200))
+            else:
+                arma_atual = jogador.armas[nome_cls]
+                tag = font_pequena.render("MELHORAR", True, (150, 255, 150))
+                nivel_txt = font_pequena.render(
+                    f"Nível {arma_atual.nivel} -> {arma_atual.nivel + 1}", True, (200, 200, 200))
 
         TELA.blit(tag, (x + largura_caixa // 2 - tag.get_width() // 2, y + 110))
         TELA.blit(nivel_txt, (x + largura_caixa // 2 - nivel_txt.get_width() // 2, y + 140))
@@ -523,7 +642,7 @@ def desenhar_pausado():
     return r
                       
 def nova_partida():
-    global jogador, todos_sprites, inimigos, tiros
+    global jogador, todos_sprites, inimigos, tiros, explosoes
     global pontos, spawn_timer, tempo_inicio
     global numero_onda, banner_timer, banner_texto, banner_cor
     global boss_apareceu, boss_ativo
@@ -532,12 +651,13 @@ def nova_partida():
     todos_sprites = pygame.sprite.Group()
     inimigos = pygame.sprite.Group()
     tiros = pygame.sprite.Group()
+    explosoes = pygame.sprite.Group()
 
     jogador = Jogador(LARGURA // 2, ALTURA - 60)
     todos_sprites.add(jogador)
 
-    arma_inicial = ArmaTiroReto()
-    jogador.armas[ArmaTiroReto.__name__] = arma_inicial
+    arma_inicial = ArmaEspada()
+    jogador.armas[ArmaEspada.__name__] = arma_inicial
     arma_inicial.ao_upar(jogador, todos_sprites, tiros)
 
     pontos = 0
@@ -687,6 +807,8 @@ while rodando:
                     pontos += 1
                     jogador.ganhar_xp(robo.xp)
                     era_chefe = isinstance(robo, Boss)
+                    if isinstance(robo, RoboKamikaze):
+                        explodir_kamikaze(robo, todos_sprites, explosoes)
                     robo.kill()
                     if era_chefe:
                         boss_ativo = False
@@ -709,8 +831,15 @@ while rodando:
                 jogador.vida -= 1
                 jogador.dano_cooldown = FPS
             for robo in colididos:
+                if isinstance(robo, RoboKamikaze):
+                    explodir_kamikaze(robo, todos_sprites, explosoes)
                 if not isinstance(robo, Boss):
                     robo.kill()
+
+        if pygame.sprite.spritecollide(jogador, explosoes, False):
+            if jogador.dano_cooldown <= 0:
+                jogador.vida -= 1
+                jogador.dano_cooldown = FPS
 
         if jogador.vida <= 0:
             print("GAME OVER!")
@@ -749,7 +878,7 @@ while rodando:
                                    largura_barra * (robo.vida / robo.vida_max), 5))
 
         texto = font.render(
-            f"Vida: {jogador.vida}  |  Pontos: {pontos}  |  Nivel: {jogador.nivel}",
+            f"Vida: {jogador.vida}/{jogador.vida_maxima}  |  Pontos: {pontos}  |  Nivel: {jogador.nivel}",
             True, (255, 255, 255))
         TELA.blit(texto, (10, 10))
 

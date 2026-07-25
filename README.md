@@ -31,8 +31,8 @@ Não é preciso apertar nada para atirar — todas as armas disparam automaticam
 
 ## Como funciona
 
-- **XP e Nível**: destruir robôs concede experiência. Ao encher a barra de XP, o jogador sobe de nível e o jogo pausa para você escolher uma nova arma ou um upgrade de uma arma que já possui (até 8 níveis por arma).
-- **Vida**: o jogador começa com 5 pontos de vida e perde 1 a cada colisão com um inimigo. Ao chegar a 0, é game over.
+- **XP e Nível**: destruir robôs concede experiência. Ao encher a barra de XP, o jogador sobe de nível e o jogo pausa para você escolher uma nova arma, um upgrade de uma arma que já possui (até 8 níveis por arma), ou aumentar sua vida máxima.
+- **Vida**: o jogador começa com 5 pontos de vida (mostrados como atual/máximo no HUD) e perde 1 a cada colisão com um inimigo ou explosão. Ao chegar a 0, é game over. A cada upgrade de "Vitalidade" escolhido na tela de nível, a vida máxima sobe e o jogador é curado na mesma quantidade.
 - **Dificuldade progressiva**: o intervalo entre spawns normais diminui aos poucos com o tempo de jogo (os robôs vão aparecendo cada vez mais rápido).
 - **Ondas especiais**: a cada 30 segundos chega uma rajada grande de inimigos de uma vez, com um aviso na tela ("ONDA X CHEGANDO!"). Cada onda traz mais inimigos que a anterior.
 
@@ -40,7 +40,7 @@ Não é preciso apertar nada para atirar — todas as armas disparam automaticam
 
 | Arma | Comportamento |
 |---|---|
-| Tiro Reto | Dispara na última direção que você andou. Nos níveis mais altos, atira múltiplos projéteis em leque. |
+| Espada Giratória | Golpe corpo a corpo: a lâmina varre um arco na direção para onde você está olhando, acertando todos os inimigos no caminho. Nos níveis mais altos o arco fica mais largo, o dano aumenta e surgem lâminas extras golpeando ao mesmo tempo em outros ângulos. |
 | Rajada Tripla | Dispara vários tiros ao mesmo tempo em um leque mais amplo. |
 | Laser Perfurante | Projétil rápido que atravessa vários inimigos sem ser destruído. |
 | Orbe Girante | Um ou mais orbes giram continuamente ao redor do jogador, causando dano a quem tocar. |
@@ -52,15 +52,18 @@ Não é preciso apertar nada para atirar — todas as armas disparam automaticam
 | Robô Zigue-Zague | Desce quicando de um lado para o outro | Desde o início |
 | Robô Reto | Desce rápido em linha reta, frágil | Desde o início |
 | Robô Perseguidor | Persegue a posição do jogador | A partir de 5 pontos |
+| Robô Kamikaze | Persegue rápido e pisca em branco/laranja como aviso; morre em 1 golpe, mas ao tocar o jogador (ou ser destruído por uma arma) explode, causando dano numa área bem maior que o seu corpo | A partir de 8 pontos |
 | Robô Tanque | Lento, muito resistente (barra de vida visível), dá bastante XP | A partir de 15 pontos |
 
 ## Estrutura do código
 
 - `Entidade`: classe base com posição e movimento.
 - `Jogador`: controla movimento, vida, XP e as armas equipadas.
-- `Tiro` / `Orbe`: projéteis usados pelas armas.
-- `Arma` (e subclasses `ArmaTiroReto`, `ArmaTripla`, `ArmaLaser`, `ArmaOrbital`): lógica de disparo e evolução de cada arma.
-- `Robo` (e subclasses `RoboZigueZague`, `RoboReto`, `RoboPerseguidor`, `RoboTanque`): comportamento de cada tipo de inimigo.
+- `Tiro` / `Orbe` / `Espada`: projéteis e golpes usados pelas armas (a `Espada` varre um arco ao redor do jogador).
+- `Explosao`: área de dano temporária deixada pelo Robô Kamikaze ao explodir.
+- `Arma` (e subclasses `ArmaEspada`, `ArmaTripla`, `ArmaLaser`, `ArmaOrbital`): lógica de disparo e evolução de cada arma.
+- `Robo` (e subclasses `RoboZigueZague`, `RoboReto`, `RoboPerseguidor`, `RoboKamikaze`, `RoboTanque`): comportamento de cada tipo de inimigo.
+- Escolha de nível: além das armas, `gerar_opcoes`/`aplicar_escolha` também podem oferecer o upgrade de "Vitalidade" (+ vida máxima).
 - Loop principal: spawn de inimigos, atualização de armas, colisões, HUD e a tela de escolha de arma ao subir de nível.
 
 ## Criadores do projeto 
