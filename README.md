@@ -5,7 +5,7 @@ Um shooter 2D estilo *survivors* (inspirado em Vampire Survivors), feito em Pyth
 ## Pré-requisitos
 
 - Python 3.9+
-- Pygame
+- Pygame, Random, Math
 
 Instalar o Pygame:
 
