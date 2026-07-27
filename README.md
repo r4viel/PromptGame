@@ -16,7 +16,7 @@ pip install pygame
 ## Como rodar
 
 ```bash
-python legiao_do_mal.py
+python jogo_tiro.py
 ```
 
 ## Controles
@@ -54,23 +54,42 @@ Não é preciso apertar nada para atirar — todas as armas disparam automaticam
 | Robô Perseguidor | Persegue a posição do jogador | A partir de 5 pontos |
 | Robô Kamikaze | Persegue rápido e pisca em branco/laranja como aviso; morre em 1 golpe, mas ao tocar o jogador (ou ser destruído por uma arma) explode, causando dano numa área bem maior que o seu corpo | A partir de 8 pontos |
 | Robô Tanque | Lento, muito resistente (barra de vida visível), dá bastante XP | A partir de 15 pontos |
+| **Boss** | Desce até o topo da tela, depois se move de um lado para o outro. Muita vida (barra visível) e dá 300 de XP. Derrotá-lo encerra a partida com vitória | Após 7 minutos de jogo |
+
+> O boss aparece uma única vez por partida, 7 minutos (`TEMPO_BOSS_MS`) após o início. Um banner "O CHEFE CHEGOU!" avisa quando ele surge, e derrotá-lo leva direto para a tela de créditos com vitória.
 
 ## Estrutura do código
+
+O projeto é dividido em dois arquivos:
+
+### `classes.py`
+
+Reúne todas as classes do jogo:
 
 - `Entidade`: classe base com posição e movimento.
 - `Jogador`: controla movimento, vida, XP e as armas equipadas.
 - `Tiro` / `Orbe` / `Espada`: projéteis e golpes usados pelas armas (a `Espada` varre um arco ao redor do jogador).
-- `Explosao`: área de dano temporária deixada pelo Robô Kamikaze ao explodir.
 - `Arma` (e subclasses `ArmaEspada`, `ArmaTripla`, `ArmaLaser`, `ArmaOrbital`): lógica de disparo e evolução de cada arma.
-- `Robo` (e subclasses `RoboZigueZague`, `RoboReto`, `RoboPerseguidor`, `RoboKamikaze`, `RoboTanque`): comportamento de cada tipo de inimigo.
-- Escolha de nível: além das armas, `gerar_opcoes`/`aplicar_escolha` também podem oferecer o upgrade de "Vitalidade" (+ vida máxima).
+- `Robo` (e subclasses `RoboZigueZague`, `RoboReto`, `RoboPerseguidor`, `RoboKamikaze`, `RoboTanque`, `Boss`): comportamento de cada tipo de inimigo.
+- `Explosao`: área de dano temporária deixada pelo Robô Kamikaze ao explodir.
+
+### `jogo_tiro.py`
+
+Contém tudo o que não é classe:
+
+- Inicialização do Pygame, janela, fontes e relógio.
+- Funções de spawn (`criar_inimigo`, `spawn_onda_especial`, `explodir_kamikaze`).
+- Escolha de nível: `gerar_opcoes`/`aplicar_escolha`, que oferecem novas armas, upgrades de armas já adquiridas ou o upgrade de "Vitalidade" (+ vida máxima).
+- Telas de menu, pausa e créditos.
 - Loop principal: spawn de inimigos, atualização de armas, colisões, HUD e a tela de escolha de arma ao subir de nível.
 
-## Criadores do projeto 
+Como `jogo_tiro.py` importa tudo de `classes.py`, mantenha os dois arquivos na mesma pasta ao rodar o jogo.
 
-- 'Raviel (João Felipe)'
-- 'Christophe'
-- 'Marcos Felipe'
-- 'Tallys Rafael'
-- 'Victor Gabriel'
-- 'Apolo Gabriel'
+## Criadores do projeto
+
+- Raviel (João Felipe)
+- Christophe
+- Marcos Felipe
+- Tallys Rafael
+- Victor Gabriel
+- Apolo Gabriel
