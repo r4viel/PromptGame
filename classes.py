@@ -4,8 +4,8 @@ import random
 import math
 
 # Constantes de tela usadas pelas classes (mantidas em sincronia com jogo_tiro.py)
-LARGURA = 800
-ALTURA = 600
+LARGURA = 1200
+ALTURA = 900
 
 
 class Entidade(pygame.sprite.Sprite):
@@ -375,14 +375,7 @@ class Boss(Robo):
                 self.direcao_x *= -1
 
 class Explosao(pygame.sprite.Sprite):
-    """Área de dano temporária deixada pela explosão do Robô Kamikaze.
-
-    Fica ativa por `duracao` quadros com um raio fixo (bem maior que o corpo
-    do kamikaze), pegando o jogador mesmo que ele não tenha encostado
-    diretamente no robô — por exemplo, se ele for destruído por uma arma
-    perto demais do jogador.
-    """
-    def __init__(self, x, y, raio=85, duracao=16):
+    def __init__(self, x, y, raio=67, duracao=16):
         super().__init__()
         self.raio = raio
         self.duracao = duracao
