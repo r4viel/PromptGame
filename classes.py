@@ -1,11 +1,23 @@
 """Classes do jogo (entidades, projéteis, armas e inimigos)."""
+import os
 import pygame
 import random
 import math
 
-# Constantes de tela usadas pelas classes (mantidas em sincronia com jogo_tiro.py)
+# Constantes de tela usadas pelas classes (mantidas em sincronia com jogo_tiro.py,
+# que atualiza LARGURA/ALTURA a cada frame caso a janela seja redimensionada)
 LARGURA = 1200
 ALTURA = 900
+
+# Pasta onde este arquivo está localizado. Usar isso (em vez de nomes de
+# arquivo "soltos") evita o bug de FileNotFoundError quando o jogo é
+# executado a partir de outra pasta (outro diretório de trabalho atual).
+PASTA_JOGO = os.path.dirname(os.path.abspath(__file__))
+
+
+def caminho_imagem(nome_arquivo):
+    """Monta o caminho absoluto de uma imagem que fica na pasta Img."""
+    return os.path.join(PASTA_JOGO, 'Img', nome_arquivo)
 
 
 class Entidade(pygame.sprite.Sprite):
@@ -278,35 +290,128 @@ class Robo(Entidade):
         self.vida_max = vida
         self.dano = dano
 
+        # Direção de entrada: aponta do ponto de spawn (que fica fora da
+        # tela, em qualquer uma das 4 bordas) para o centro da tela. Assim
+        # os inimigos que só "descem" (Zumbi, Esqueleto, Tanque, Slime)
+        # conseguem vir de cima, de baixo, da esquerda ou da direita sem
+        # precisar de nenhuma lógica extra em cada classe.
+        centro = pygame.Vector2(LARGURA / 2, ALTURA / 2)
+        direcao = centro - pygame.Vector2(x, y)
+        if direcao.length() > 0:
+            direcao = direcao.normalize()
+        else:
+            direcao = pygame.Vector2(0, 1)
+        self.direcao_entrada = direcao
+
     def atualizar_posicao(self):
         raise NotImplementedError
 
     def update(self):
         self.atualizar_posicao()
-        if self.rect.y > ALTURA + 60:
+        margem = 80
+        if (self.rect.right < -margem or self.rect.left > LARGURA + margem or
+                self.rect.bottom < -margem or self.rect.top > ALTURA + margem):
             self.kill()
 
 class RoboZigueZague(Robo):
-    """Desce em zigue-zague, ricocheteando nas bordas laterais."""
+    """Anda em zigue-zague vindo de qualquer borda da tela em direção ao centro."""
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=3, xp=15, vida=1,
-                          cor=(255, 0, 0), tamanho=(40, 40), dano=1)
-        self.direcao = random.choice([-1, 1])
+                          cor=(255, 0, 0), tamanho=(9 * 3, 8 * 3), dano=1)
+
+        folha = pygame.image.load(caminho_imagem('Slime.png')).convert_alpha()
+
+        self.framesS = list()
+        for i in range(3):
+            frameS = folha.subsurface((i * 32, 0, 32, 32))
+            frameS = pygame.transform.scale(frameS, (32 * 3, 32 * 3))
+            self.framesS.append(frameS)
+
+        self.parteS = 0
+        self.contadorS = 0
+        self.fase_zigue = random.uniform(0, math.tau)
+
+        # Usa o primeiro frame já recortado (em vez da folha de sprites
+        # inteira) e recria o rect no tamanho real da imagem, para o
+        # hitbox de colisão bater com o desenho na tela.
+        self.image = self.framesS[self.parteS]
+        self.rect = self.image.get_rect(center=(x, y))
 
     def atualizar_posicao(self):
-        self.rect.y += self.velocidade
-        self.rect.x += self.direcao * 3
-        if self.rect.x <= 0 or self.rect.x >= LARGURA - 40:
-            self.direcao *= -1
+        # Avança na direção de entrada e balança de um lado para o outro
+        # perpendicularmente a ela (zigue-zague), funcionando não importa
+        # de qual borda o inimigo veio.
+        self.fase_zigue += 0.15
+        perp = pygame.Vector2(-self.direcao_entrada.y, self.direcao_entrada.x)
+        balanco = perp * math.sin(self.fase_zigue) * 3
+        self.rect.x += self.direcao_entrada.x * self.velocidade + balanco.x
+        self.rect.y += self.direcao_entrada.y * self.velocidade + balanco.y
 
-class RoboReto(Robo):
+        self.contadorS += 1
+        if self.contadorS >= 10:
+            self.contadorS = 0
+            self.parteS = (self.parteS + 1) % 3
+            self.image = self.framesS[self.parteS]
+
+class Zumbi(Robo):
   
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=5, xp=10, vida=1,
-                          cor=(255, 140, 0), tamanho=(32, 32), dano=1)
+                          cor=(255, 140, 0), tamanho=(58, 36), dano=1)
+
+        folha = pygame.image.load(caminho_imagem('Zumbi.png')).convert_alpha()
+
+        self.framesZ = []
+        for i in range(24):
+            frameZ = folha.subsurface((i * 64, 0, 64, 64))
+            frameZ = pygame.transform.scale(frameZ, (64 * 2, 64 * 2))
+            self.framesZ.append(frameZ)
+
+        self.parteZ = 0
+
+        # Mesma correção do Slime: começa já no frame recortado e ajusta
+        # o rect para o tamanho real da imagem (a imagem original informada
+        # ao Robo.__init__ era só um placeholder menor que o sprite real).
+        self.image = self.framesZ[self.parteZ]
+        self.rect = self.image.get_rect(center=(x, y))
 
     def atualizar_posicao(self):
-        self.rect.y += self.velocidade
+        self.rect.x += self.direcao_entrada.x * self.velocidade
+        self.rect.y += self.direcao_entrada.y * self.velocidade
+
+        self.parteZ = (self.parteZ + 1) % 24
+
+        self.image = self.framesZ[self.parteZ]
+
+class Esqueleto(Robo):
+    """Anda vindo de qualquer borda da tela em direção ao centro."""
+    def __init__(self, x, y):
+        super().__init__(x, y, velocidade=3.6, xp=18, vida=2,
+                          cor=(210, 210, 190), tamanho=(50, 50), dano=1)
+
+        folha = pygame.image.load(caminho_imagem('Esqueleto.png')).convert_alpha()
+
+        self.framesE = []
+        for i in range(16):
+            frameE = folha.subsurface((i * 64, 0, 64, 64))
+            frameE = pygame.transform.scale(frameE, (64 * 2, 64 * 2))
+            self.framesE.append(frameE)
+
+        self.parteE = 0
+        self.contadorE = 0
+
+        self.image = self.framesE[self.parteE]
+        self.rect = self.image.get_rect(center=(x, y))
+
+    def atualizar_posicao(self):
+        self.rect.x += self.direcao_entrada.x * self.velocidade
+        self.rect.y += self.direcao_entrada.y * self.velocidade
+
+        self.contadorE += 1
+        if self.contadorE >= 6:
+            self.contadorE = 0
+            self.parteE = (self.parteE + 1) % 16
+            self.image = self.framesE[self.parteE]
 
 class RoboPerseguidor(Robo):
     """Persegue a posição atual do jogador."""
@@ -331,7 +436,8 @@ class RoboTanque(Robo):
                           cor=(110, 60, 60), tamanho=(60, 60), dano=2)
 
     def atualizar_posicao(self):
-        self.rect.y += self.velocidade
+        self.rect.x += self.direcao_entrada.x * self.velocidade
+        self.rect.y += self.direcao_entrada.y * self.velocidade
 
 class RoboKamikaze(Robo):
 
