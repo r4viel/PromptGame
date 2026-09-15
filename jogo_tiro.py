@@ -1,19 +1,17 @@
 import pygame
 import random
-import math
 
-
-from classes import (
-    Entidade, Jogador, Tiro, Orbe, Espada,
-    Arma, ArmaEspada, ArmaTripla, ArmaLaser, ArmaOrbital, TODAS_AS_ARMAS,
-    Robo, RoboZigueZague, RoboReto, RoboPerseguidor, RoboTanque, RoboKamikaze,
-    Boss, Explosao,
-    LARGURA, ALTURA,
-)
+import classes
+from classes import *
 
 pygame.init()
 
-TELA = pygame.display.set_mode((LARGURA, ALTURA))
+# Tamanho mínimo da janela: evita que o layout (menus, HUD, tela de
+# upgrade) quebre se o jogador redimensionar a janela para algo minúsculo.
+LARGURA_MINIMA = 800
+ALTURA_MINIMA = 600
+
+TELA = pygame.display.set_mode((LARGURA, ALTURA), pygame.RESIZABLE)
 pygame.display.set_caption("Legião do mal - Mecanica")
 
 FPS = 60
@@ -27,9 +25,24 @@ font_titulo_grande = pygame.font.SysFont(None, 70)
 TEMPO_BOSS_MS = 7 * 60 * 1000
 
 
+MARGEM_SPAWN = 50
+
+def posicao_spawn():
+    """Escolhe uma borda aleatória da tela (cima, baixo, esquerda ou
+    direita) e devolve uma posição logo fora dela, para os inimigos
+    poderem entrar em cena vindos de qualquer direção."""
+    borda = random.choice(["cima", "baixo", "esquerda", "direita"])
+    if borda == "cima":
+        return random.randint(40, LARGURA - 40), -MARGEM_SPAWN
+    if borda == "baixo":
+        return random.randint(40, LARGURA - 40), ALTURA + MARGEM_SPAWN
+    if borda == "esquerda":
+        return -MARGEM_SPAWN, random.randint(40, ALTURA - 40)
+    return LARGURA + MARGEM_SPAWN, random.randint(40, ALTURA - 40)
+
 def criar_inimigo(pontos_atual, jogador):
-    tipos = [RoboZigueZague, RoboReto]
-    pesos = [3, 3]
+    tipos = [RoboZigueZague, Zumbi, Esqueleto]
+    pesos = [3, 3, 2]
     if pontos_atual >= 5:
         tipos.append(RoboPerseguidor)
         pesos.append(2)
@@ -41,8 +54,7 @@ def criar_inimigo(pontos_atual, jogador):
         pesos.append(1)
 
     cls = random.choices(tipos, weights=pesos, k=1)[0]
-    x = random.randint(40, LARGURA - 40)
-    y = -40
+    x, y = posicao_spawn()
     if cls is RoboPerseguidor or cls is RoboKamikaze:
         return cls(x, y, jogador)
     return cls(x, y)
@@ -58,7 +70,12 @@ def spawn_onda_especial(numero_onda, pontos_atual, jogador, todos_sprites, inimi
     quantidade = 5 + numero_onda * 2
     for i in range(quantidade):
         robo = criar_inimigo(pontos_atual, jogador)
-        robo.rect.y -= random.randint(0, 220)
+        # Afasta o robô um pouco mais para trás (na direção oposta à de
+        # entrada), seja qual for a borda de onde ele veio, para os
+        # inimigos da rajada chegarem escalonados em vez de todos juntos.
+        atraso = random.randint(0, 220)
+        robo.rect.x -= robo.direcao_entrada.x * atraso
+        robo.rect.y -= robo.direcao_entrada.y * atraso
         todos_sprites.add(robo)
         inimigos.add(robo)
                                                   
@@ -162,21 +179,24 @@ def rect_botao(y, largura=300, altura=70):
     return pygame.Rect(LARGURA // 2 - largura // 2, y, largura, altura)
 
 def rects_menu():
+    # Posições em % da altura da janela (equivalem a 250/340/430 quando
+    # ALTURA = 900, o tamanho original), então o menu continua centralizado
+    # e bem espaçado em qualquer tamanho de janela.
     return {
-        "jogar": rect_botao(250),
-        "creditos": rect_botao(340),
-        "sair": rect_botao(430),
+        "jogar": rect_botao(int(ALTURA * 0.278)),
+        "creditos": rect_botao(int(ALTURA * 0.378)),
+        "sair": rect_botao(int(ALTURA * 0.478)),
     }
 
 def rects_pausado():
     return {
-        "continuar": rect_botao(230),
-        "menu": rect_botao(320),
-        "sair": rect_botao(410),
+        "continuar": rect_botao(int(ALTURA * 0.256)),
+        "menu": rect_botao(int(ALTURA * 0.356)),
+        "sair": rect_botao(int(ALTURA * 0.456)),
     }
 
 def rects_creditos():
-    return {"voltar": rect_botao(500)}
+    return {"voltar": rect_botao(int(ALTURA * 0.556))}
 
 def desenhar_botao(rect, texto):
     mouse_pos = pygame.mouse.get_pos()
@@ -308,6 +328,15 @@ while rodando:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             rodando = False
+
+        elif event.type == pygame.VIDEORESIZE:
+            # Algoritmo de responsividade: recria a janela com o novo
+            # tamanho escolhido pelo jogador (respeitando um mínimo), e o
+            # restante do jogo se adapta sozinho porque LARGURA/ALTURA são
+            # recalculados a partir do tamanho real da janela logo abaixo.
+            nova_largura = max(LARGURA_MINIMA, event.w)
+            nova_altura = max(ALTURA_MINIMA, event.h)
+            TELA = pygame.display.set_mode((nova_largura, nova_altura), pygame.RESIZABLE)
                                                 
         if estado == "menu" and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if rects_menu_atual.get("jogar") and rects_menu_atual["jogar"].collidepoint(event.pos):
@@ -354,6 +383,10 @@ while rodando:
 
             if escolhido is not None:
                 aplicar_escolha(opcoes_atuais[escolhido], jogador, todos_sprites, tiros)
+                # Consome exatamente 1 upgrade pendente por escolha feita.
+                # (Antes o contador também era decrementado logo ao abrir a
+                # tela de escolha, então ao subir 2+ níveis no mesmo
+                # instante o jogador perdia uma tela de upgrade.)
                 if jogador.level_ups_pendentes > 0:
                     jogador.level_ups_pendentes -= 1
 
@@ -364,7 +397,18 @@ while rodando:
                     caixas_opcoes = []
                 else:
                     estado = "jogando"
-       
+
+    # Sincroniza LARGURA/ALTURA com o tamanho real atual da janela (pode
+    # ter mudado neste frame por causa de um VIDEORESIZE acima) e propaga
+    # isso para classes.py, já que "from classes import *" faz uma cópia
+    # separada dos nomes e não acompanharia sozinha o redimensionamento.
+    LARGURA, ALTURA = TELA.get_size()
+    classes.LARGURA, classes.ALTURA = LARGURA, ALTURA
+
+    # Mantém o jogador dentro da tela caso a janela tenha encolhido.
+    jogador.rect.x = max(0, min(jogador.rect.x, LARGURA - jogador.rect.width))
+    jogador.rect.y = max(0, min(jogador.rect.y, ALTURA - jogador.rect.height))
+
     if estado == "jogando":
         tempo_ms_atual = pygame.time.get_ticks() - tempo_inicio
         segundos_totais_atual = tempo_ms_atual // 1000
