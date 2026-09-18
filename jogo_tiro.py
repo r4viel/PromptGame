@@ -13,6 +13,7 @@ ALTURA_MINIMA = 600
 
 TELA = pygame.display.set_mode((LARGURA, ALTURA), pygame.RESIZABLE)
 pygame.display.set_caption("Legião do mal - Mecanica")
+mapa = pygame.image.load(caminho_imagem("Mapa.png")).convert()
 
 FPS = 60
 clock = pygame.time.Clock()
@@ -522,7 +523,8 @@ while rodando:
 
     else:
                                                                                 
-        TELA.fill((20, 20, 20))
+        mapa_atual = pygame.transform.scale(mapa, TELA.get_size())
+        TELA.blit(mapa_atual, (0, 0))
         todos_sprites.draw(TELA)
 
         for robo in inimigos:
