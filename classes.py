@@ -35,14 +35,39 @@ class Entidade(pygame.sprite.Sprite):
 class Jogador(Entidade):
     def __init__(self, x, y):
         super().__init__(x, y, 5, 0)
-        self.image.fill((0, 255, 0))         
+
+        folha = pygame.image.load(
+            caminho_imagem("Protagonista.png")
+        ).convert_alpha()
+
+        self.frames = []
+        for i in range(16):
+            frame = folha.subsurface((i * 128, 0, 128, 128)).copy()
+            bbox = frame.get_bounding_rect()
+
+            if bbox.width > 0 and bbox.height > 0:
+                frame = frame.subsurface(bbox).copy()
+
+            frame = pygame.transform.scale(
+                frame,
+                (frame.get_width() * 2, frame.get_height() * 2)
+            )
+            self.frames.append(frame)
+
+        self.frame_atual = 0
+        self.animacao_timer = 0
+        self.esta_movendo = False
+        self.virado_esquerda = False
+        self.image = self.frames[0]
+        self.rect = self.image.get_rect(center=(x, y))
+
         self.vida = 5
         self.vida_maxima = 5
-        self.ultima_direcao = pygame.Vector2(0, -1)                            
-        self.dano_cooldown = 0 
+        self.ultima_direcao = pygame.Vector2(0, -1)
+        self.dano_cooldown = 0
         self.nivel = 1
         self.xp_necessario = 100
-        self.level_ups_pendentes = 0                                     
+        self.level_ups_pendentes = 0
         self.armas = {}
 
     def ganhar_xp(self, quantidade):
@@ -52,6 +77,28 @@ class Jogador(Entidade):
             self.nivel += 1
             self.xp_necessario += 50
             self.level_ups_pendentes += 1
+
+    def _animar(self, direcao):
+        self.esta_movendo = direcao.length_squared() > 0
+
+        if not self.esta_movendo:
+            return
+
+        if direcao.x != 0:
+            self.virado_esquerda = direcao.x < 0
+
+        self.animacao_timer += 1
+        if self.animacao_timer >= 5:
+            self.animacao_timer = 0
+            self.frame_atual = (self.frame_atual + 1) % len(self.frames)
+
+        frame = self.frames[self.frame_atual]
+        if self.virado_esquerda:
+            frame = pygame.transform.flip(frame, True, False)
+
+        centro = self.rect.center
+        self.image = frame
+        self.rect = self.image.get_rect(center=centro)
 
     def update(self):
         keys = pygame.key.get_pressed()
@@ -71,11 +118,14 @@ class Jogador(Entidade):
             self.ultima_direcao = direcao.copy()
             self.mover(direcao.x * self.velocidade, direcao.y * self.velocidade)
 
-        self.rect.x = max(0, min(self.rect.x, LARGURA - 40))
-        self.rect.y = max(0, min(self.rect.y, ALTURA - 40))
+        self._animar(direcao)
 
         if self.dano_cooldown > 0:
             self.dano_cooldown -= 1
+
+
+
+    
                                 
 class Tiro(Entidade):
     def __init__(self, x, y, direcao, dano=1, velocidade=10,

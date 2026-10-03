@@ -14,6 +14,9 @@ ALTURA_MINIMA = 600
 TELA = pygame.display.set_mode((LARGURA, ALTURA), pygame.RESIZABLE)
 pygame.display.set_caption("Legião do mal - Mecanica")
 mapa = pygame.image.load(caminho_imagem("Mapa.png")).convert()
+# Câmera do mapa
+camera_x = 0.0
+camera_y = 0.0
 
 FPS = 60
 clock = pygame.time.Clock()
@@ -280,14 +283,17 @@ def nova_partida():
     global numero_onda, banner_timer, banner_texto, banner_cor
     global boss_apareceu, boss_ativo
     global opcoes_atuais, caixas_opcoes
+    global camera_x, camera_y
 
     todos_sprites = pygame.sprite.Group()
     inimigos = pygame.sprite.Group()
     tiros = pygame.sprite.Group()
     explosoes = pygame.sprite.Group()
 
-    jogador = Jogador(LARGURA // 2, ALTURA - 60)
+    jogador = Jogador(LARGURA // 2, ALTURA // 2)
     todos_sprites.add(jogador)
+    camera_x = 0.0
+    camera_y = 0.0
 
     arma_inicial = ArmaEspada()
     jogador.armas[ArmaEspada.__name__] = arma_inicial
@@ -505,7 +511,23 @@ while rodando:
 
                                                                            
         if estado == "jogando":
+            pos_jogador_antes = pygame.Vector2(jogador.rect.center)
             todos_sprites.update()
+
+            deslocamento = (
+                pygame.Vector2(jogador.rect.center) - pos_jogador_antes
+            )
+
+            if deslocamento.length_squared() > 0:
+                camera_x += deslocamento.x
+                camera_y += deslocamento.y
+
+                for sprite in todos_sprites:
+                    if sprite is not jogador:
+                        sprite.rect.x -= deslocamento.x
+                        sprite.rect.y -= deslocamento.y
+
+                jogador.rect.center = pos_jogador_antes
 
             if jogador.level_ups_pendentes > 0:
                 opcoes_atuais = gerar_opcoes(jogador)
@@ -522,9 +544,23 @@ while rodando:
         rects_creditos_atual = desenhar_creditos(vitoria)
 
     else:
-                                                                                
-        mapa_atual = pygame.transform.scale(mapa, TELA.get_size())
-        TELA.blit(mapa_atual, (0, 0))
+        TELA.blit(mapa, (0, 0))
+        mapa_largura, mapa_altura = mapa.get_size()
+
+        offset_x = int(camera_x) % mapa_largura
+        offset_y = int(camera_y) % mapa_altura
+
+        inicio_x = -offset_x - mapa_largura
+        inicio_y = -offset_y - mapa_altura
+
+        x = inicio_x
+        while x < LARGURA:
+            y = inicio_y
+            while y < ALTURA:
+                TELA.blit(mapa, (x, y))
+                y += mapa_altura
+            x += mapa_largura
+
         todos_sprites.draw(TELA)
 
         for robo in inimigos:
