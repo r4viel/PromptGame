@@ -20,6 +20,120 @@ def caminho_imagem(nome_arquivo):
     return os.path.join(PASTA_JOGO, 'Img', nome_arquivo)
 
 
+_FRAMES_PODER = {}
+_FRAMES_TRIPLO = None
+
+
+def carregar_frames_poder(prefixo, quantidade):
+    """Carrega e armazena em cache os quadros de uma animação de poder."""
+    chave = (prefixo, quantidade)
+    if chave not in _FRAMES_PODER:
+        frames = []
+        for indice in range(quantidade):
+            caminho = caminho_imagem(
+                os.path.join("Poderes", f"{prefixo}_{indice}.png")
+            )
+            frames.append(pygame.image.load(caminho).convert_alpha())
+        _FRAMES_PODER[chave] = tuple(frames)
+    return _FRAMES_PODER[chave]
+
+
+def recortar_projetil_triplo(frame, indice):
+    """Mantém o projétil principal e remove fragmentos fora do corpo."""
+    mascara = pygame.mask.from_surface(frame)
+    componentes = mascara.connected_components()
+    if not componentes:
+        raise ValueError(f"Quadro vazio na animação da rajada tripla: {indice}")
+
+    maior_area = max(componente.count() for componente in componentes)
+    candidatos = [
+        componente for componente in componentes
+        if componente.count() >= maior_area * 0.75
+    ]
+    if indice == 0 and len(candidatos) > 1:
+        principal = max(
+            candidatos,
+            key=lambda componente: componente.get_bounding_rects()[0].centerx,
+        )
+    else:
+        principal = max(candidatos, key=lambda componente: componente.count())
+
+    limites = principal.get_bounding_rects()[0]
+    mascara_local = pygame.mask.Mask((limites.width, limites.height))
+    for x in range(limites.width):
+        for y in range(limites.height):
+            if principal.get_at((x + limites.x, y + limites.y)):
+                mascara_local.set_at((x, y))
+    recorte = frame.subsurface(limites).copy()
+    return mascara_local.to_surface(
+        surface=recorte,
+        setcolor=None,
+        unsetcolor=(0, 0, 0, 0),
+    )
+
+
+def carregar_frames_triplo():
+    """Devolve quadros recortados, sem repetir o trabalho por projétil."""
+    global _FRAMES_TRIPLO
+    if _FRAMES_TRIPLO is None:
+        originais = carregar_frames_poder("triplo", 9)
+        _FRAMES_TRIPLO = tuple(
+            recortar_projetil_triplo(frame, indice)
+            for indice, frame in enumerate(originais[:7])
+        )
+    return _FRAMES_TRIPLO
+
+
+POSES_ESPADA = 5
+OMBRO = (90, 64)
+FOLHAS_ESPADA = [
+    ("Ataque_espada_combinado_1.png", (107, 17)),
+    ("Ataque_espada_combinado_2.png", (133, 46)),
+    ("Ataque_espada_combinado_3.png", (163, 79)),
+]
+
+_cache_quadros_espada = {}
+_cache_imagens_espada = {}
+
+
+def _quadros_espada(tier, espelhado):
+    """Retorna poses do golpe combinado e o pivô do ombro em cada pose."""
+    chave = (tier, espelhado)
+    if chave not in _cache_quadros_espada:
+        arquivo, origem = FOLHAS_ESPADA[tier]
+        folha = pygame.image.load(caminho_imagem(arquivo)).convert_alpha()
+        largura = folha.get_width() // POSES_ESPADA
+        quadros = [
+            folha.subsurface(
+                (indice * largura, 0, largura, folha.get_height())
+            ).copy()
+            for indice in range(POSES_ESPADA)
+        ]
+        pivo_x = origem[0] + OMBRO[0] * 2
+        pivo_y = origem[1] + OMBRO[1] * 2
+        if espelhado:
+            quadros = [pygame.transform.flip(q, True, False) for q in quadros]
+            pivo_x = largura - pivo_x
+        _cache_quadros_espada[chave] = (quadros, (pivo_x, pivo_y))
+    return _cache_quadros_espada[chave]
+
+
+def _girar_em_torno(imagem, pivo, angulo):
+    """Gira uma imagem e calcula onde ficou o pivô após a rotação."""
+    girada = pygame.transform.rotate(imagem, angulo)
+    centro_original = pygame.Vector2(imagem.get_size()) / 2
+    deslocamento = pygame.Vector2(pivo) - centro_original
+    angulo_rad = math.radians(angulo)
+    deslocamento_girado = pygame.Vector2(
+        deslocamento.x * math.cos(angulo_rad)
+        + deslocamento.y * math.sin(angulo_rad),
+        -deslocamento.x * math.sin(angulo_rad)
+        + deslocamento.y * math.cos(angulo_rad),
+    )
+    novo_pivo = pygame.Vector2(girada.get_size()) / 2 + deslocamento_girado
+    return girada, (novo_pivo.x, novo_pivo.y)
+
+
 class Entidade(pygame.sprite.Sprite):
     def __init__(self, x, y, velocidade, xp):
         super().__init__()
@@ -41,6 +155,7 @@ class Jogador(Entidade):
         ).convert_alpha()
 
         self.frames = []
+        self.frame_bounds = []
         for i in range(16):
             frame = folha.subsurface((i * 128, 0, 128, 128)).copy()
             bbox = frame.get_bounding_rect()
@@ -48,6 +163,7 @@ class Jogador(Entidade):
             if bbox.width > 0 and bbox.height > 0:
                 frame = frame.subsurface(bbox).copy()
 
+            self.frame_bounds.append(bbox)
             frame = pygame.transform.scale(
                 frame,
                 (frame.get_width() * 2, frame.get_height() * 2)
@@ -58,6 +174,7 @@ class Jogador(Entidade):
         self.animacao_timer = 0
         self.esta_movendo = False
         self.virado_esquerda = False
+        self.ataque_espada_ativo = False
         self.image = self.frames[0]
         self.rect = self.image.get_rect(center=(x, y))
 
@@ -70,6 +187,18 @@ class Jogador(Entidade):
         self.level_ups_pendentes = 0
         self.armas = {}
 
+    def origem_canvas(self):
+        """Retorna o canto do canvas 128x128 não recortado na tela."""
+        bbox = self.frame_bounds[self.frame_atual]
+        if self.virado_esquerda:
+            offset_x = 128 - bbox.right
+        else:
+            offset_x = bbox.left
+        return (
+            self.rect.left - offset_x * 2,
+            self.rect.top - bbox.top * 2,
+        )
+
     def ganhar_xp(self, quantidade):
         self.xp += quantidade
         while self.xp >= self.xp_necessario:
@@ -81,16 +210,14 @@ class Jogador(Entidade):
     def _animar(self, direcao):
         self.esta_movendo = direcao.length_squared() > 0
 
-        if not self.esta_movendo:
-            return
+        if self.esta_movendo:
+            if direcao.x != 0:
+                self.virado_esquerda = direcao.x < 0
 
-        if direcao.x != 0:
-            self.virado_esquerda = direcao.x < 0
-
-        self.animacao_timer += 1
-        if self.animacao_timer >= 5:
-            self.animacao_timer = 0
-            self.frame_atual = (self.frame_atual + 1) % len(self.frames)
+            self.animacao_timer += 1
+            if self.animacao_timer >= 5:
+                self.animacao_timer = 0
+                self.frame_atual = (self.frame_atual + 1) % len(self.frames)
 
         frame = self.frames[self.frame_atual]
         if self.virado_esquerda:
@@ -120,6 +247,11 @@ class Jogador(Entidade):
 
         self._animar(direcao)
 
+        if self.ataque_espada_ativo:
+            centro = self.rect.center
+            self.image = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
+            self.rect = self.image.get_rect(center=centro)
+
         if self.dano_cooldown > 0:
             self.dano_cooldown -= 1
 
@@ -132,18 +264,74 @@ class Tiro(Entidade):
                  perfurante=False, persistente=False,
                  cor=(255, 255, 0), tamanho=(10, 10)):
         super().__init__(x, y, velocidade, xp=0)
-        self.image = pygame.Surface(tamanho)
-        self.image.fill(cor)
-        self.rect = self.image.get_rect(center=(x, y))
         self.direcao = direcao
         self.dano = dano
-        self.perfurante = perfurante                                                
-        self.persistente = persistente                                                           
+        self.perfurante = perfurante
+        self.persistente = persistente
         self.atingidos = {}                                               
+        self.tipo_sprite = None
+        self.tipo_impacto = "triplo"
+        self.frames = ()
+        self.frame_atual = 0
+        self.animacao_timer = 0
+        self.escala_sprite = 1.0
+
+        if cor[0] > 200 and 60 < cor[1] < 210:
+            self.tipo_sprite = "triplo"
+            self.tipo_impacto = "triplo"
+            self.frames = carregar_frames_triplo()
+            self.frame_atual = 0
+            escala = 0.48
+        elif cor[0] > 200 and cor[2] > 150:
+            self.tipo_sprite = "laser"
+            self.tipo_impacto = "laser"
+            self.frames = carregar_frames_poder("laser", 6)
+            self.frame_atual = 2
+            escala = 0.34
+        else:
+            escala = self.escala_sprite
+
+        if self.frames:
+            self.image = self._imagem_frame(escala)
+        else:
+            self.image = pygame.Surface(tamanho, pygame.SRCALPHA)
+            pygame.draw.circle(
+                self.image,
+                cor,
+                (tamanho[0] // 2, tamanho[1] // 2),
+                max(2, min(tamanho) // 2),
+            )
+        self.rect = self.image.get_rect(center=(x, y))
+        self.escala_sprite = escala
+
+    def _imagem_frame(self, escala=None):
+        if escala is None:
+            escala = self.escala_sprite
+        base = self.frames[self.frame_atual]
+        tamanho_sprite = (
+            max(1, int(base.get_width() * escala)),
+            max(1, int(base.get_height() * escala)),
+        )
+        base = pygame.transform.scale(base, tamanho_sprite)
+        angulo = -math.degrees(math.atan2(self.direcao.y, self.direcao.x))
+        return pygame.transform.rotate(base, angulo)
 
     def update(self):
         self.rect.x += self.direcao.x * self.velocidade
         self.rect.y += self.direcao.y * self.velocidade
+
+        if self.frames:
+            self.animacao_timer += 1
+            intervalo = 3 if self.tipo_sprite == "triplo" else 2
+            if self.animacao_timer >= intervalo:
+                self.animacao_timer = 0
+                if self.tipo_sprite == "triplo" and self.frame_atual >= 2:
+                    self.frame_atual = 2 + (self.frame_atual - 1) % 5
+                else:
+                    self.frame_atual = (self.frame_atual + 1) % len(self.frames)
+                centro = self.rect.center
+                self.image = self._imagem_frame()
+                self.rect = self.image.get_rect(center=centro)
 
         if not self.persistente:
             if (self.rect.bottom < 0 or self.rect.top > ALTURA or
@@ -153,10 +341,13 @@ class Tiro(Entidade):
 class Orbe(pygame.sprite.Sprite):
     def __init__(self, jogador, angulo_offset, raio, dano):
         super().__init__()
-        self.image = pygame.Surface((22, 22), pygame.SRCALPHA)
-        pygame.draw.circle(self.image, (0, 200, 255), (11, 11), 11)
-        pygame.draw.circle(self.image, (255, 255, 255), (11, 11), 11, 2)
-        self.rect = self.image.get_rect()
+        frames = carregar_frames_poder("orbe", 8)
+        self.frames = tuple(
+            pygame.transform.scale(frame, (44, 44)) for frame in frames
+        )
+        self.frame_atual = 0
+        self.image = self.frames[self.frame_atual]
+        self.rect = self.image.get_rect(center=jogador.rect.center)
         self.jogador = jogador
         self.angulo_offset = angulo_offset
         self.raio = raio
@@ -165,24 +356,52 @@ class Orbe(pygame.sprite.Sprite):
         self.persistente = True
         self.atingidos = {}
         self.angulo_global = 0
+        self.tipo_impacto = "orbe"
 
     def update(self):
         self.angulo_global = (self.angulo_global + 3) % 360
+        self.frame_atual = (self.frame_atual + 1) % len(self.frames)
+        centro_anterior = self.rect.center
+        self.image = self.frames[self.frame_atual]
+        self.rect = self.image.get_rect(center=centro_anterior)
         ang = math.radians(self.angulo_global + self.angulo_offset)
         cx, cy = self.jogador.rect.center
         self.rect.centerx = cx + math.cos(ang) * self.raio
         self.rect.centery = cy + math.sin(ang) * self.raio
+
+
+class Impacto(pygame.sprite.Sprite):
+    """Anima o efeito visual quando um projétil acerta um inimigo."""
+    def __init__(self, centro, tipo="triplo"):
+        super().__init__()
+        prefixo = {
+            "laser": "impacto_laser",
+            "orbe": "impacto_orbe",
+        }.get(tipo, "impacto_triplo")
+        quantidade = 4 if tipo == "orbe" else 5
+        self.frames = carregar_frames_poder(prefixo, quantidade)
+        self.indice = 0
+        self.timer = 0
+        self.image = pygame.transform.scale(self.frames[0], (48, 48))
+        self.rect = self.image.get_rect(center=centro)
+
+    def update(self):
+        self.timer += 1
+        if self.timer % 3 == 0:
+            self.indice += 1
+            if self.indice >= len(self.frames):
+                self.kill()
+                return
+            centro = self.rect.center
+            self.image = pygame.transform.scale(
+                self.frames[self.indice], (48, 48)
+            )
+            self.rect = self.image.get_rect(center=centro)
                                        
 class Espada(pygame.sprite.Sprite):
-    def __init__(self, jogador, dano, raio, duracao, angulo_arco, angulo_inicial):
+    def __init__(self, jogador, dano, raio, duracao, angulo_arco,
+                 angulo_inicial, tier=0, angulo_mira=0):
         super().__init__()
-        self.image_original = pygame.Surface((46, 20), pygame.SRCALPHA)
-        pygame.draw.polygon(self.image_original, (110, 80, 40), [(0, 7), (10, 7), (10, 13), (0, 13)])
-        pygame.draw.polygon(self.image_original, (225, 232, 240),
-                             [(9, 10), (40, 3), (46, 10), (40, 17)])
-        pygame.draw.polygon(self.image_original, (255, 255, 255),
-                             [(9, 10), (40, 3), (46, 10), (40, 17)], 2)
-
         self.jogador = jogador
         self.dano = dano
         self.raio = raio
@@ -190,29 +409,59 @@ class Espada(pygame.sprite.Sprite):
         self.tempo = 0
         self.angulo_arco = angulo_arco
         self.angulo_inicial = angulo_inicial
+        self.angulo_mira = angulo_mira
+        self.tier = max(0, min(tier, len(FOLHAS_ESPADA) - 1))
         self.perfurante = True
         self.persistente = False
         self.atingidos = {}
+        self.mask = pygame.mask.Mask((1, 1))
+        self.jogador.ataque_espada_ativo = True
+        self._montar()
 
-        self.image = self.image_original
-        self.rect = self.image.get_rect()
-        self._posicionar(self.angulo_inicial)
+    def _montar(self):
+        pose = min(
+            POSES_ESPADA - 1,
+            int(self.tempo / max(1, self.duracao) * POSES_ESPADA),
+        )
+        espelhado = not self.jogador.virado_esquerda
+        quadros, pivo = _quadros_espada(self.tier, espelhado)
 
-    def _posicionar(self, angulo):
-        cx, cy = self.jogador.rect.center
-        ang_rad = math.radians(angulo)
-        centro = (cx + math.cos(ang_rad) * self.raio, cy + math.sin(ang_rad) * self.raio)
-        self.image = pygame.transform.rotate(self.image_original, -angulo)
-        self.rect = self.image.get_rect(center=centro)
+        referencia = 0 if espelhado else 180
+        delta = int(round(
+            (self.angulo_mira - referencia + 180) % 360 - 180
+        ))
+        chave = (self.tier, espelhado, pose, delta)
+        if chave not in _cache_imagens_espada:
+            imagem, novo_pivo = _girar_em_torno(quadros[pose], pivo, delta)
+            mascara = pygame.mask.from_surface(imagem, 127)
+            _cache_imagens_espada[chave] = (imagem, novo_pivo, mascara)
+        imagem, novo_pivo, mascara = _cache_imagens_espada[chave]
+
+        origem_x, origem_y = self.jogador.origem_canvas()
+        ombro_x = origem_x + (
+            128 - OMBRO[0] if espelhado else OMBRO[0]
+        ) * 2
+        ombro_y = origem_y + OMBRO[1] * 2
+
+        self.image = imagem
+        self.mask = mascara
+        self.rect = imagem.get_rect(
+            topleft=(
+                round(ombro_x - novo_pivo[0]),
+                round(ombro_y - novo_pivo[1]),
+            )
+        )
 
     def update(self):
         self.tempo += 1
-        progresso = min(1, self.tempo / self.duracao)
-        angulo_atual = self.angulo_inicial + self.angulo_arco * progresso
-        self._posicionar(angulo_atual)
+        self._montar()
 
         if self.tempo >= self.duracao:
             self.kill()
+
+    def kill(self):
+        super().kill()
+        self.jogador.ataque_espada_ativo = False
 
 class Arma:
     nome_arma = "Arma"
@@ -252,6 +501,19 @@ class ArmaEspada(Arma):
     def cooldown(self):
         return max(10, self.cooldown_base - self.nivel * 6)
 
+    def update(self, jogador, todos_sprites, tiros, inimigos):
+        self.timer -= 1
+        if self.timer > 0:
+            return
+
+        # A arma atualiza antes do grupo de sprites remover golpes expirados.
+        # Aguarda a remoção para não desenhar dois golpes sobrepostos.
+        if any(isinstance(tiro, Espada) for tiro in tiros):
+            return
+
+        self.disparar(jogador, todos_sprites, tiros, inimigos)
+        self.timer = self.cooldown()
+
     def disparar(self, jogador, todos_sprites, tiros, inimigos):
         dano = 2 + self.nivel
         raio = 50 + self.nivel * 9      
@@ -263,7 +525,9 @@ class ArmaEspada(Arma):
         angulo_inicial = angulo_base - arco / 2
 
         espada = Espada(jogador, dano=dano, raio=raio, duracao=duracao,
-                          angulo_arco=arco, angulo_inicial=angulo_inicial)
+                        angulo_arco=arco, angulo_inicial=angulo_inicial,
+                        tier=min(2, (self.nivel - 1) // 3),
+                        angulo_mira=angulo_base)
         todos_sprites.add(espada)
         tiros.add(espada)
 
@@ -281,7 +545,7 @@ class ArmaTripla(Arma):
             offset = -angulo_total / 2 + i * (angulo_total / (qtd - 1)) if qtd > 1 else 0
             d = base.rotate(offset)
             t = Tiro(jogador.rect.centerx, jogador.rect.centery, d,
-                      dano=dano, velocidade=9, cor=(255, 150, 0), tamanho=(9, 9))
+                     dano=dano, velocidade=9, cor=(255, 150, 0))
             todos_sprites.add(t)
             tiros.add(t)
 
@@ -294,7 +558,7 @@ class ArmaLaser(Arma):
         base = jogador.ultima_direcao
         t = Tiro(jogador.rect.centerx, jogador.rect.centery, base,
                   dano=dano, velocidade=16, perfurante=True,
-                  cor=(255, 0, 255), tamanho=(6, 26))
+                  cor=(255, 0, 255))
         todos_sprites.add(t)
         tiros.add(t)
 

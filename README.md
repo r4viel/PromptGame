@@ -40,10 +40,12 @@ Não é preciso apertar nada para atirar — todas as armas disparam automaticam
 
 | Arma | Comportamento |
 |---|---|
-| Espada Giratória | Golpe corpo a corpo: a lâmina varre um arco na direção para onde você está olhando, acertando todos os inimigos no caminho. Nos níveis mais altos o arco fica mais largo, o dano aumenta e surgem lâminas extras golpeando ao mesmo tempo em outros ângulos. |
-| Rajada Tripla | Dispara vários tiros ao mesmo tempo em um leque mais amplo. |
-| Laser Perfurante | Projétil rápido que atravessa vários inimigos sem ser destruído. |
-| Orbe Girante | Um ou mais orbes giram continuamente ao redor do jogador, causando dano a quem tocar. |
+| Espada Giratória | Golpe combinado animado com braço, lâmina e rastro: as poses acompanham o arco na direção para onde você está olhando, com três folhas visuais que mudam conforme o nível da arma. O golpe usa máscara para acertar os inimigos apenas nas áreas desenhadas. |
+| Rajada Tripla | Dispara projéteis animados ao mesmo tempo em um leque mais amplo. |
+| Laser Perfurante | Projétil animado e rápido que atravessa vários inimigos sem ser destruído. |
+| Orbe Girante | Orbes animados giram continuamente ao redor do jogador, causando dano a quem tocar; cada acerto exibe uma animação de impacto. |
+
+Os projéteis da Rajada Tripla e do Laser Perfurante também exibem animações de impacto ao acertar inimigos.
 
 ### Inimigos
 

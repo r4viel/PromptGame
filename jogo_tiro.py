@@ -455,7 +455,10 @@ while rodando:
             arma.update(jogador, todos_sprites, tiros, inimigos)
                                                      
         for tiro in list(tiros):
-            atingidos = pygame.sprite.spritecollide(tiro, inimigos, False)
+            colisao = pygame.sprite.collide_mask if isinstance(tiro, Espada) else None
+            atingidos = pygame.sprite.spritecollide(
+                tiro, inimigos, False, colisao
+            )
             for robo in atingidos:
                 rid = id(robo)
                 if tiro.perfurante or tiro.persistente:
@@ -464,6 +467,10 @@ while rodando:
                     tiro.atingidos[rid] = 25 if tiro.persistente else 1
                 else:
                     tiro.atingidos[rid] = 1
+
+                if isinstance(tiro, (Tiro, Orbe)):
+                    impacto = Impacto(robo.rect.center, tiro.tipo_impacto)
+                    todos_sprites.add(impacto)
 
                 robo.vida -= tiro.dano
                 if robo.vida <= 0:
