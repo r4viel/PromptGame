@@ -69,6 +69,12 @@ def explodir_kamikaze(robo, todos_sprites, explosoes):
     todos_sprites.add(explosao)
     explosoes.add(explosao)
 
+def soltar_xp(robo, jogador, todos_sprites, gemas_xp):
+    """Deixa o XP do inimigo morto no chão, para o jogador coletar."""
+    gema = GemaXP(robo.rect.centerx, robo.rect.centery, robo.xp, jogador)
+    todos_sprites.add(gema)
+    gemas_xp.add(gema)
+
 def spawn_onda_especial(numero_onda, pontos_atual, jogador, todos_sprites, inimigos):
     """Cria uma rajada de inimigos de uma vez, ficando maior a cada onda."""
     quantidade = 5 + numero_onda * 2
@@ -278,7 +284,7 @@ def desenhar_pausado():
     return r
                       
 def nova_partida():
-    global jogador, todos_sprites, inimigos, tiros, explosoes
+    global jogador, todos_sprites, inimigos, tiros, explosoes, gemas_xp
     global pontos, spawn_timer, tempo_inicio
     global numero_onda, banner_timer, banner_texto, banner_cor
     global boss_apareceu, boss_ativo
@@ -289,6 +295,7 @@ def nova_partida():
     inimigos = pygame.sprite.Group()
     tiros = pygame.sprite.Group()
     explosoes = pygame.sprite.Group()
+    gemas_xp = pygame.sprite.Group()
 
     jogador = Jogador(LARGURA // 2, ALTURA // 2)
     todos_sprites.add(jogador)
@@ -475,7 +482,7 @@ while rodando:
                 robo.vida -= tiro.dano
                 if robo.vida <= 0:
                     pontos += 1
-                    jogador.ganhar_xp(robo.xp)
+                    soltar_xp(robo, jogador, todos_sprites, gemas_xp)
                     era_chefe = isinstance(robo, Boss)
                     if isinstance(robo, RoboKamikaze):
                         explodir_kamikaze(robo, todos_sprites, explosoes)
@@ -495,7 +502,16 @@ while rodando:
                     if tiro.atingidos[rid] <= 0:
                         del tiro.atingidos[rid]
                                                                               
-        colididos = pygame.sprite.spritecollide(jogador, inimigos, False)
+        hitbox_jogador = jogador.hitbox
+
+        # Coleta do XP que está no chão.
+        for gema in list(gemas_xp):
+            if hitbox_jogador.colliderect(gema.rect):
+                jogador.ganhar_xp(gema.valor)
+                gema.kill()
+
+        colididos = [robo for robo in inimigos
+                     if hitbox_jogador.colliderect(robo.hitbox)]
         if colididos:
             if jogador.dano_cooldown <= 0:
                 jogador.vida -= 1
@@ -506,7 +522,7 @@ while rodando:
                 if not isinstance(robo, Boss):
                     robo.kill()
 
-        if pygame.sprite.spritecollide(jogador, explosoes, False):
+        if any(explosao.atinge(hitbox_jogador) for explosao in explosoes):
             if jogador.dano_cooldown <= 0:
                 jogador.vida -= 1
                 jogador.dano_cooldown = FPS
@@ -520,6 +536,12 @@ while rodando:
         if estado == "jogando":
             pos_jogador_antes = pygame.Vector2(jogador.rect.center)
             todos_sprites.update()
+
+            # Kamikaze que passou de 5 segundos de vida se autodestrói.
+            for robo in list(inimigos):
+                if isinstance(robo, RoboKamikaze) and robo.expirou:
+                    explodir_kamikaze(robo, todos_sprites, explosoes)
+                    robo.kill()
 
             deslocamento = (
                 pygame.Vector2(jogador.rect.center) - pos_jogador_antes
