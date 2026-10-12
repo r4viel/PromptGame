@@ -14,6 +14,10 @@ ALTURA = 900
 # executado a partir de outra pasta (outro diretório de trabalho atual).
 PASTA_JOGO = os.path.dirname(os.path.abspath(__file__))
 
+FATOR_VELOCIDADE_INIMIGOS = 0.7
+TEMPO_VIDA_KAMIKAZE = 5 * 60
+RAIO_IMA_XP = 110
+
 
 def caminho_imagem(nome_arquivo):
     """Monta o caminho absoluto de uma imagem que fica na pasta Img."""
@@ -141,10 +145,22 @@ class Entidade(pygame.sprite.Sprite):
         self.image = pygame.Surface((40, 40))
         self.rect = self.image.get_rect(center=(x, y))
         self.xp = xp
+        self._resto_x = 0.0
+        self._resto_y = 0.0
 
     def mover(self, dx, dy):
         self.rect.x += dx
         self.rect.y += dy
+
+    def mover_suave(self, dx, dy):
+        self._resto_x += dx
+        self._resto_y += dy
+        passo_x = int(self._resto_x)
+        passo_y = int(self._resto_y)
+        self._resto_x -= passo_x
+        self._resto_y -= passo_y
+        self.rect.x += passo_x
+        self.rect.y += passo_y
                              
 class Jogador(Entidade):
     def __init__(self, x, y):
@@ -186,6 +202,22 @@ class Jogador(Entidade):
         self.xp_necessario = 100
         self.level_ups_pendentes = 0
         self.armas = {}
+
+    HITBOX_CANVAS = pygame.Rect(55, 57, 28, 14)
+
+    @property
+    def hitbox(self):
+        origem_x, origem_y = self.origem_canvas()
+        base = self.HITBOX_CANVAS
+        x = base.x
+        if self.virado_esquerda:
+            x = 128 - (base.x + base.width)
+        return pygame.Rect(
+            origem_x + x * 2,
+            origem_y + base.y * 2,
+            base.width * 2,
+            base.height * 2,
+        )
 
     def origem_canvas(self):
         """Retorna o canto do canvas 128x128 não recortado na tela."""
@@ -603,6 +635,7 @@ class Robo(Entidade):
         self.vida = vida
         self.vida_max = vida
         self.dano = dano
+        self.velocidade *= FATOR_VELOCIDADE_INIMIGOS
 
         # Direção de entrada: aponta do ponto de spawn (que fica fora da
         # tela, em qualquer uma das 4 bordas) para o centro da tela. Assim
@@ -617,6 +650,19 @@ class Robo(Entidade):
             direcao = pygame.Vector2(0, 1)
         self.direcao_entrada = direcao
 
+    HITBOX_REL = (0.0, 0.0, 1.0, 1.0)
+
+    @property
+    def hitbox(self):
+        fx, fy, fw, fh = self.HITBOX_REL
+        r = self.rect
+        return pygame.Rect(
+            round(r.x + r.width * fx),
+            round(r.y + r.height * fy),
+            max(1, round(r.width * fw)),
+            max(1, round(r.height * fh)),
+        )
+
     def atualizar_posicao(self):
         raise NotImplementedError
 
@@ -629,6 +675,7 @@ class Robo(Entidade):
 
 class RoboZigueZague(Robo):
     """Anda em zigue-zague vindo de qualquer borda da tela em direção ao centro."""
+    HITBOX_REL = (0.31, 0.28, 0.38, 0.41)
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=3, xp=15, vida=1,
                           cor=(255, 0, 0), tamanho=(9 * 3, 8 * 3), dano=1)
@@ -657,9 +704,13 @@ class RoboZigueZague(Robo):
         # de qual borda o inimigo veio.
         self.fase_zigue += 0.15
         perp = pygame.Vector2(-self.direcao_entrada.y, self.direcao_entrada.x)
-        balanco = perp * math.sin(self.fase_zigue) * 3
-        self.rect.x += self.direcao_entrada.x * self.velocidade + balanco.x
-        self.rect.y += self.direcao_entrada.y * self.velocidade + balanco.y
+        # A amplitude do balanço acompanha a velocidade, mantendo o formato
+        # do zigue-zague igual ao original mesmo com o inimigo mais lento.
+        balanco = perp * math.sin(self.fase_zigue) * self.velocidade
+        self.mover_suave(
+            self.direcao_entrada.x * self.velocidade + balanco.x,
+            self.direcao_entrada.y * self.velocidade + balanco.y,
+        )
 
         self.contadorS += 1
         if self.contadorS >= 10:
@@ -668,7 +719,8 @@ class RoboZigueZague(Robo):
             self.image = self.framesS[self.parteS]
 
 class Zumbi(Robo):
-  
+    HITBOX_REL = (0.27, 0.31, 0.45, 0.34)
+
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=5, xp=10, vida=1,
                           cor=(255, 140, 0), tamanho=(58, 36), dano=1)
@@ -690,8 +742,8 @@ class Zumbi(Robo):
         self.rect = self.image.get_rect(center=(x, y))
 
     def atualizar_posicao(self):
-        self.rect.x += self.direcao_entrada.x * self.velocidade
-        self.rect.y += self.direcao_entrada.y * self.velocidade
+        self.mover_suave(self.direcao_entrada.x * self.velocidade,
+                         self.direcao_entrada.y * self.velocidade)
 
         self.parteZ = (self.parteZ + 1) % 24
 
@@ -699,6 +751,8 @@ class Zumbi(Robo):
 
 class Esqueleto(Robo):
     """Anda vindo de qualquer borda da tela em direção ao centro."""
+    HITBOX_REL = (0.27, 0.27, 0.45, 0.41)
+
     def __init__(self, x, y):
         super().__init__(x, y, velocidade=3.6, xp=18, vida=2,
                           cor=(210, 210, 190), tamanho=(50, 50), dano=1)
@@ -718,8 +772,8 @@ class Esqueleto(Robo):
         self.rect = self.image.get_rect(center=(x, y))
 
     def atualizar_posicao(self):
-        self.rect.x += self.direcao_entrada.x * self.velocidade
-        self.rect.y += self.direcao_entrada.y * self.velocidade
+        self.mover_suave(self.direcao_entrada.x * self.velocidade,
+                         self.direcao_entrada.y * self.velocidade)
 
         self.contadorE += 1
         if self.contadorE >= 6:
@@ -740,8 +794,7 @@ class RoboPerseguidor(Robo):
         diff = alvo - pos
         if diff.length() > 0:
             diff = diff.normalize()
-        self.rect.x += diff.x * self.velocidade
-        self.rect.y += diff.y * self.velocidade
+        self.mover_suave(diff.x * self.velocidade, diff.y * self.velocidade)
 
 class RoboTanque(Robo):
     """Lento, muito resistente, dá bastante xp."""
@@ -750,8 +803,8 @@ class RoboTanque(Robo):
                           cor=(110, 60, 60), tamanho=(60, 60), dano=2)
 
     def atualizar_posicao(self):
-        self.rect.x += self.direcao_entrada.x * self.velocidade
-        self.rect.y += self.direcao_entrada.y * self.velocidade
+        self.mover_suave(self.direcao_entrada.x * self.velocidade,
+                         self.direcao_entrada.y * self.velocidade)
 
 class RoboKamikaze(Robo):
 
@@ -760,15 +813,21 @@ class RoboKamikaze(Robo):
                           cor=(255, 90, 0), tamanho=(28, 28), dano=2)
         self.jogador = jogador
         self.pisca = 0
+        self.tempo_vida = TEMPO_VIDA_KAMIKAZE
+        self.expirou = False
 
     def atualizar_posicao(self):
+        self.tempo_vida -= 1
+        if self.tempo_vida <= 0:
+            self.expirou = True
+            return
+
         alvo = pygame.Vector2(self.jogador.rect.center)
         pos = pygame.Vector2(self.rect.center)
         diff = alvo - pos
         if diff.length() > 0:
             diff = diff.normalize()
-        self.rect.x += diff.x * self.velocidade
-        self.rect.y += diff.y * self.velocidade
+        self.mover_suave(diff.x * self.velocidade, diff.y * self.velocidade)
 
         self.pisca = (self.pisca + 1) % 20
         cor = (255, 255, 255) if self.pisca < 6 else (255, 90, 0)
@@ -790,7 +849,7 @@ class Boss(Robo):
                 self.rect.y = self.y_alvo
                 self.fase = "lutando"
         else:
-            self.rect.x += self.direcao_x * self.velocidade
+            self.mover_suave(self.direcao_x * self.velocidade, 0)
             if self.rect.x <= 0 or self.rect.x >= LARGURA - self.rect.width:
                 self.direcao_x *= -1
 
@@ -811,8 +870,49 @@ class Explosao(pygame.sprite.Sprite):
         pygame.draw.circle(self.image, (255, 140, 0, alpha), (self.raio, self.raio), self.raio)
         pygame.draw.circle(self.image, (255, 235, 140, alpha), (self.raio, self.raio), int(self.raio * 0.55))
 
+    def atinge(self, rect):
+        cx, cy = self.rect.center
+        mais_proximo_x = max(rect.left, min(cx, rect.right))
+        mais_proximo_y = max(rect.top, min(cy, rect.bottom))
+        return math.hypot(cx - mais_proximo_x, cy - mais_proximo_y) <= self.raio
+
     def update(self):
         self.tempo += 1
         self._redesenhar()
         if self.tempo >= self.duracao:
             self.kill()
+
+
+class GemaXP(Entidade):
+    
+    def __init__(self, x, y, valor, jogador):
+        super().__init__(x, y, 0, 0)
+        self.valor = valor
+        self.jogador = jogador
+        self.atraida = False
+        self.velocidade_ima = 4.0
+
+        raio = 6 + min(valor, 50) // 10
+        lado = raio * 2 + 4
+        self.image = pygame.Surface((lado, lado), pygame.SRCALPHA)
+        c = lado // 2
+        losango = [(c, c - raio), (c + raio, c), (c, c + raio), (c - raio, c)]
+        pygame.draw.polygon(self.image, (0, 150, 255), losango)
+        pygame.draw.polygon(self.image, (200, 235, 255), losango, 2)
+        self.rect = self.image.get_rect(center=(x, y))
+
+    def update(self):
+        alvo = pygame.Vector2(self.jogador.hitbox.center)
+        pos = pygame.Vector2(self.rect.center)
+        diff = alvo - pos
+        distancia = diff.length()
+
+        if RAIO_IMA_XP > 0 and distancia <= RAIO_IMA_XP:
+            self.atraida = True
+
+        if self.atraida and distancia > 0:
+            # Acelera enquanto é puxada, sempre mais rápida que o jogador.
+            self.velocidade_ima = min(self.velocidade_ima + 0.5, 14)
+            diff = diff / distancia
+            self.mover_suave(diff.x * self.velocidade_ima,
+                             diff.y * self.velocidade_ima)
